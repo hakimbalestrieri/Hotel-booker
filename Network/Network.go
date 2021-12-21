@@ -244,7 +244,4 @@ func (network *Network) sendToChildNodes(msg string, emetteurId int) {
 	}
 }
 				
-
-//sendToChild(msg, emetteurId)
-
 }
