@@ -22,7 +22,8 @@ type Network struct {
 	CurrentServerId int
 	OtherServers    map[int]*net.Conn
 	Ready           chan int
-	RaymondMsg      chan p.RaymondProtocol
+	//RaymondMsg      chan p.RaymondProtocol
+	Raymond      *Raymond
 }
 
 // ConnectToServers permet d'ouvrir une connexion sur tous les autres servers du pool
@@ -214,6 +215,35 @@ func (network *Network) reqUpdate(cmd string, arguments []string, relId int) {
 }
 
 //sendToRootNode(msg, emetteurId) --> 
+
+//send message to root node
+func (network *Network) sendToRootNode(msg string, emetteurId int) {
+	log.Println("Send message to root node")
+	for i, _ := range network.OtherServers {
+		if i == 0 {
+			_, err := (*network.OtherServers[i]).Write([]byte(msg + "\n"))
+			if err != nil {
+				log.Println("Error during sendToRootNode")
+				continue
+			}
+		}
+	}
+}
+
+//send message to every child nodes contained in raymond.queue
+func (network *Network) sendToChildNodes(msg string, emetteurId int) {
+	log.Println("Send message to child nodes")
+	for i, _ := range Raymond.queue {
+		if i != 0 {
+			_, err := (*network.OtherServers[i]).Write([]byte(msg + "\n"))
+			if err != nil {
+				log.Println("Error during sendToChildNodes")
+				continue
+			}
+		}
+	}
+}
+				
 
 //sendToChild(msg, emetteurId)
 
