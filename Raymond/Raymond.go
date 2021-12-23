@@ -16,7 +16,6 @@ type Raymond struct {
 func Init(ray *Raymond) {
 	ray.RaymondMsgBroadcast = make(chan p.RaymondProtocol)
 	ray.status = p.RAY_NO
-	ray.parent = nil
 }
 
 func (ray *Raymond) Run() {
@@ -51,8 +50,8 @@ func (ray *Raymond) waitForReady() {
 }
 
 func handleRequest(ray *Raymond, msg p.RaymondProtocol) {
-	if ray.parent != nil {
-		append(ray.queue, msg)
+	if ray.parent !== nil {
+		ray.queue = append(ray.queue, msg.ServerId)
 		if ray.status == p.RAY_NO {
 			ray.status = p.RAY_REQ_SENDER
 			ray.RaymondMsgBroadcast <- p.RaymondProtocol{
@@ -74,11 +73,11 @@ func handleWait(ray *Raymond, msg p.RaymondProtocol) {
 
 func handleEnd(ray *Raymond, msg p.RaymondProtocol) {
 	ray.status = p.RAY_NO
-	if length(ray.queue) > 0 {
+	if len(ray.queue) > 0 {
 		ray.queue = ray.queue[1:]
 
 		//appeler  sendToRoodNode(msg, indexDuServeur)
-		if length(ray.queue) > {
+		if len(ray.queue) > 0 {
 			ray.status = p.RAY_REQ_SENDER
 			ray.RaymondMsgBroadcast <- p.RaymondProtocol{
 				ReqType:  p.RAY_REQ,

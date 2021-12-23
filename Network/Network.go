@@ -9,6 +9,7 @@ Date: 13.11.2021
 import (
 	conf "PRR-Labo3-Balestrieri/Config"
 	p "PRR-Labo3-Balestrieri/Protocol"
+	r "PRR-Labo3-Balestrieri/Raymond"
 	"bufio"
 	"fmt"
 	"log"
@@ -23,7 +24,7 @@ type Network struct {
 	OtherServers    map[int]*net.Conn
 	Ready           chan int
 	//RaymondMsg      chan p.RaymondProtocol
-	Raymond      *Raymond
+	Raymond *r.Raymond
 }
 
 // ConnectToServers permet d'ouvrir une connexion sur tous les autres servers du pool
@@ -191,7 +192,6 @@ func (network *Network) SendUpdateBroadcast() {
 	}
 }
 
-
 // reqUpdate permet d'envoyer sur le channel dédié une demande d'update
 func (network *Network) reqUpdate(cmd string, arguments []string, relId int) {
 	switch cmd {
@@ -214,7 +214,7 @@ func (network *Network) reqUpdate(cmd string, arguments []string, relId int) {
 	}
 }
 
-//sendToRootNode(msg, emetteurId) --> 
+//sendToRootNode(msg, emetteurId) -->
 
 //send message to root node
 func (network *Network) sendToRootNode(msg string, emetteurId int) {
@@ -242,6 +242,4 @@ func (network *Network) sendToChildNodes(msg string, emetteurId int) {
 			}
 		}
 	}
-}
-				
 }
