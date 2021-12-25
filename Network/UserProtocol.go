@@ -1,6 +1,6 @@
 /**
 File: UserProtocol.go
-Authors: Hakim Balestrieri
+Authors: Hakim Balestrieri & Alexandre Mottier
 Date: 22.10.2021
 */
 package Network

@@ -1,6 +1,6 @@
 /**
 File: hotel.go
-Authors: Hakim Balestrieri
+Authors: Hakim Balestrieri & Alexandre Mottier
 Date: 22.10.2021
 */
 package Business
@@ -31,13 +31,14 @@ type Hotel struct {
 	AccessCS chan bool
 	// UserMsgIn channel to communicate between client and hotel
 	UserMsgIn chan Network.UserProtocol
-
-	Raymond *Raymond
 }
 
 // Run redirect command to the right function to do
 func (h *Hotel) Run() {
-	log.Printf("Hotel is now running")
+	if Config.Debug {
+		log.Printf("Hotel is now running")
+	}
+
 	for {
 		cmd := <-h.UserMsgIn
 		switch cmd.Id {
@@ -84,9 +85,8 @@ func (h *Hotel) Username(c *Network.Client, args []string) {
 	h.clients = append(h.clients, args[1])
 	c.Username = args[1]
 	h.Network.UpdateMsgBroadcast <- Protocol.UpdateProtocol{
-		ReqType:    Protocol.UPD_CLIENT,
-		Arguments:  []string{args[1]},
-		ServerIdTo: h.Network.GetIdOtherServers(),
+		ReqType:   Protocol.UPD_CLIENT,
+		Arguments: []string{args[1]},
 	}
 	// FIN SECTION CRITIQUE
 	if Config.Debug {
@@ -177,9 +177,8 @@ func (h *Hotel) reserve(c *Network.Client, args []string) {
 
 	// Update other servers
 	h.Network.UpdateMsgBroadcast <- Protocol.UpdateProtocol{
-		ReqType:    Protocol.UPD_ROOM,
-		Arguments:  []string{roomNameRaw, dateReservationRaw, numberNightsRaw, c.Username},
-		ServerIdTo: h.Network.GetIdOtherServers(),
+		ReqType:   Protocol.UPD_ROOM,
+		Arguments: []string{roomNameRaw, dateReservationRaw, numberNightsRaw, c.Username},
 	}
 
 	// FIN SECTION CRITIQUE
@@ -328,7 +327,6 @@ func (h *Hotel) UpdateUsername(username string) {
 
 // UpdateRooms called by Mutex to updates rooms map
 func (h *Hotel) UpdateRooms(arguments []string) {
-
 	roomNameRaw := arguments[0]
 	dateReservationRaw := arguments[1]
 	numberNightsRaw := arguments[2]
@@ -348,17 +346,9 @@ func (h *Hotel) UpdateRooms(arguments []string) {
 	if err != nil {
 		return
 	}
-
-	//demander section critique
-	h.Raymond.handleRequest()
-	ok := <-h.AccessCS
-	if ok {
-		for i := dateReservation; i < dateReservation+numberNights; i++ {
-			h.Rooms[roomName-1][i-1] = username
-		}
+	for i := dateReservation; i < dateReservation+numberNights; i++ {
+		h.Rooms[roomName-1][i-1] = username
 	}
-	//relacher section critique
-	h.Raymond.handleRelease()
 }
 
 func (h *Hotel) Request(c *Network.Client) {

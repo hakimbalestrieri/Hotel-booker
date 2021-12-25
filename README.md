@@ -2,7 +2,7 @@
 
 ## Introduction  / Labo 1
 
-**Auteurs :** Hakim Balestrieri & Alexandre Mottier
+**Autheurs :** Hakim Balestrieri & Alexandre Mottier
 
 **Dates :** 30 septembre 2021 au 31 octobre 2021
 
@@ -12,20 +12,12 @@ L’hôtel dispose de plusieurs chambres qui peuvent être réservées une ou pl
 
 ## Introduction  / Labo 2
 
-**Auteurs :** Hakim Balestrieri & Alexandre Mottier
+**Autheurs :** Hakim Balestrieri & Alexandre Mottier
 
 **Dates :** 21 octobre 2021 au 28 novembre 2021 
 
 Partager  des  variables  parmi  un  ensemble  de  processus  est  un  problème  qui  peut  se  résoudre  par  le biais  d'un  algorithme  d'exclusion mutuelle.  Dans ce  laboratoire,  nous  allons  utiliser l’algorithme de Lamport comme algorithme d’exclusion mutuelle pour gérer l’accès à la section critique. Il  s’agit  de  reprendre  la  petite  application  de  réservation  développée  dans  le  1er  laboratoire  et  de  la faire  fonctionner  avec  plusieurs  serveurs,  sans  serveur  central.  Chaque  client  détient  une  copie  des variables partagées et doit obtenir l’accès à des sections critiques pour y apporter des modifications et diffuser celles-ci sur les autres clients. 
 
-
-## Introduction  / Labo 3
-
-**Auteurs :** Hakim Balestrieri
-
-**Dates :** 28 novembre au 23 décembre 2021 
-
-TODO
 
 
 ## Initialisation

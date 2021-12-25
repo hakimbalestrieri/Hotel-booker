@@ -1,13 +1,42 @@
-package Config
-
 /**
 File: Config.go
 Authors: Hakim Balestrieri
-Date: 27.11.2021
+Date: 23.12.2021
 */
 
-var Debug = false
+package Config
+
+var Debug = true
 var RoomsNumber = 30
 var DayNumber = 31
 var ServerPorts = map[int]int{0: 3020, 1: 3000, 2: 3001}
 var ServerNumber = len(ServerPorts)
+var ServerWithoutParent = -1
+
+type Structure struct {
+	Root     int
+	Children []int
+}
+
+var ServerSchema = map[int]*Structure{
+	0: {
+		Children: []int{3},
+		Root:     -1,
+	},
+	1: {
+		Children: []int{2},
+		Root:     0,
+	},
+	2: {
+		Children: []int{},
+		Root:     1,
+	},
+	3: {
+		Children: []int{4},
+		Root:     0,
+	},
+	4: {
+		Children: []int{},
+		Root:     3,
+	},
+}

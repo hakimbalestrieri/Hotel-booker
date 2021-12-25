@@ -3,136 +3,145 @@ package Network
 /**
 File: Network.go
 Authors: Hakim Balestrieri
-Date: 13.11.2021
+Date: 25.12.2021
 */
 
 import (
 	conf "PRR-Labo3-Balestrieri/Config"
 	p "PRR-Labo3-Balestrieri/Protocol"
-	r "PRR-Labo3-Balestrieri/Raymond"
 	"bufio"
 	"fmt"
 	"log"
 	"net"
 	"strconv"
 	"strings"
-	"time"
 )
 
 type Network struct {
-	CurrentServerId int
-	OtherServers    map[int]*net.Conn
-	Ready           chan int
-	//RaymondMsg      chan p.RaymondProtocol
-	Raymond *r.Raymond
+	CurrentServerId    int
+	UpdateMsgIn        chan p.UpdateProtocol
+	UpdateMsgBroadcast chan p.UpdateProtocol
+	rootNode           *Server
+	childNodes         []*Server
 }
 
-// ConnectToServers permet d'ouvrir une connexion sur tous les autres servers du pool
-func (network *Network) ConnectToServers() bool {
-
-	network.OtherServers = make(map[int]*net.Conn, conf.ServerNumber-1)
-	for i := 0; i < conf.ServerNumber-1; i++ {
-		network.OtherServers[i] = nil
+// ConnectToRootServer permet d'ouvrir une connexion sur le serveur root
+func (network *Network) ConnectToRootServer() bool {
+	if conf.Debug {
+		log.Println(fmt.Sprintf("Launching ConnectToRootServer() ..."))
 	}
+	serversSchema := conf.ServerSchema[network.CurrentServerId]
+	network.childNodes = make([]*Server, len(serversSchema.Children), len(serversSchema.Children))
+	initConnection := make(chan bool)
 
-	connOK := make(chan bool)
-	go network.openConnection(connOK, conf.ServerPorts[network.CurrentServerId])
+	go network.ConnectToChildren(initConnection)
 
-	for {
-		for servId, servPort := range conf.ServerPorts {
-			// On ne refait pas une connexion si la connexion a déjà été stockée
-			if servId > network.CurrentServerId &&
-				network.OtherServers[network.getRelativeIndex(servId)] == nil {
-				log.Println(fmt.Sprintf("Tentative de connexion à localhost:%d", servPort))
-				conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", servPort))
-				if err == nil {
-					conn.Write([]byte("/hello " + strconv.Itoa(network.CurrentServerId) + "\n"))
-					log.Println(fmt.Sprintf("Connexion réussi à localhost:%d", servPort))
-					network.OtherServers[network.getRelativeIndex(servId)] = &conn
-					go network.listen(&conn, servId)
-				} else {
-					log.Println(fmt.Sprintf("Connexion échouée à localhost:%d", servPort))
+	if serversSchema.Root != network.CurrentServerId {
+		rootNode := conf.ServerPorts[serversSchema.Root]
+		if conf.Debug {
+			log.Println(fmt.Sprintf("Connecting to : %d", rootNode))
+		}
+		for {
+			conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", rootNode))
+			if err != nil {
+				log.Println(fmt.Sprintf("Failed to connect to node : %d", rootNode))
+			} else {
+				conn.Write([]byte("/hello " + strconv.Itoa(network.CurrentServerId) + "\n"))
+				log.Println(fmt.Sprintf("Sucessfully connected to node : %d", rootNode))
+				network.rootNode = &Server{
+					id:   serversSchema.Root,
+					conn: &conn,
 				}
+				go network.listen(network.rootNode)
+				break
 			}
 		}
-		connectedToAll := true
-		for servId, v := range network.OtherServers {
-			if v == nil && network.getRealIndex(servId) > network.CurrentServerId {
-				connectedToAll = false
-			}
-		}
-		if connectedToAll {
-			break
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-	done := <-connOK
 
-	for _, conn := range network.OtherServers {
-		_, err := (*conn).Write([]byte("/ready\n"))
-		if err != nil {
-			return false
-		}
 	}
 
-	return done
+	return <-initConnection
 }
 
-// openConnection permet d'écouter si les autres serveurs du pool essaie de se connecter sur ce server
-func (network *Network) openConnection(connOk chan bool, port int) {
+func (network *Network) ConnectToChildren(connOk chan bool) {
 
-	listener, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	if conf.Debug {
+		log.Println("Launching ConnectToChildren")
+	}
+
+	serverPort := conf.ServerPorts[network.CurrentServerId]
+
+	listener, err := net.Listen("tcp", ":" + strconv.Itoa(serverPort))
 	if err != nil {
 		connOk <- false
-		log.Printf("unable to listen on port %d: with connOk : %s", conf.ServerPorts[network.CurrentServerId], err.Error())
+		log.Printf("unable to listen on port %d: with connOk : %s\n", conf.ServerPorts[network.CurrentServerId], err.Error())
 		return
 	}
-	log.Printf("Ouverture du port : %d", conf.ServerPorts[network.CurrentServerId])
+	defer func(listener net.Listener) {
+		_ = listener.Close()
+	}(listener)
 
-	defer listener.Close()
+	if conf.Debug {
+		log.Printf("Connected to node : %d\n", serverPort)
+	}
 
 	for {
 		connectedToAll := true
-		for servId, v := range network.OtherServers {
-			if v == nil && network.getRealIndex(servId) < network.CurrentServerId {
+		for _, childConnection := range network.childNodes {
+			if childConnection == nil {
 				connectedToAll = false
 			}
 		}
 		if connectedToAll {
 			break
 		}
+
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Printf("failed to accept connection: %s", err.Error())
+			log.Printf("failed to accept connection: %s\n", err.Error())
 			connOk <- false
 			break
 		} else {
-			log.Printf("Listen to message /hello")
+			if conf.Debug {
+				log.Println("Listen to message /hello")
+			}
 
 			msg, err := bufio.NewReader(conn).ReadString('\n')
 			if err != nil {
+				if conf.Debug {
+					log.Printf("Error while reading string : %s\n", err.Error())
+				}
+				connOk <- false
 				return
 			}
+
 			msg = strings.Trim(msg, "\r\n")
 			args := strings.Split(msg, " ")
 			cmd := strings.TrimSpace(args[0])
 			if cmd == "/hello" {
 				servId, _ := strconv.Atoi(args[1])
-				log.Println(fmt.Sprintf("Server %d : connexion établie", servId))
-				network.OtherServers[network.getRelativeIndex(servId)] = &conn
-				go network.listen(&conn, servId)
+				if conf.Debug {
+					log.Printf("Connected to node : %d\n", servId)
+				}
+				network.childNodes = append(network.childNodes, &Server{
+					id:   servId,
+					conn: &conn,
+				})
 			}
 		}
+	}
+
+	if conf.Debug {
+		log.Println("ConnectToChildren terminated")
 	}
 	connOk <- true
 	return
 }
 
 // listen for any request that are sent to this server
-func (network *Network) listen(conn *net.Conn, id int) {
-	log.Println("Listenning to server " + strconv.Itoa(id))
+func (network *Network) listen(server *Server) {
+	log.Println("Listening to Server " + strconv.Itoa(server.id))
 	for {
-		msg, err := bufio.NewReader(*conn).ReadString('\n')
+		msg, err := bufio.NewReader(*server.conn).ReadString('\n')
 		if err != nil {
 			return
 		}
@@ -140,56 +149,9 @@ func (network *Network) listen(conn *net.Conn, id int) {
 		args := strings.Split(msg, " ")
 		cmd := strings.TrimSpace(args[0])
 		arguments := args[1:]
-		if cmd == "/ready" {
-			log.Println("Server " + strconv.Itoa(id) + " is ready")
-			network.Ready <- id
-		} else {
-			network.reqLamport(cmd, arguments, id)
-			network.reqUpdate(cmd, arguments, id)
-		}
+		network.reqUpdate(cmd, arguments, server.id)
 	}
-}
-
-/*
-Store the list of children of each node And we send updates to all nodes
-*/
-func (network *Network) reqUpdate(cmd string, arguments []string, id int) {
-	if cmd == "/update" {
-		log.Println("Received update request")
-		var update p.Update
-		update.NodeId = id
-		update.Children = make([]int, 0)
-		for _, arg := range arguments {
-			child, _ := strconv.Atoi(arg)
-			update.Children = append(update.Children, child)
-		}
-		network.Update <- update
-	}
-}
-
-// SendUpdateBroadcast goroutine permetant d'envoyer sur les autres serveurs dès qu'une update est disponible dans le channel dédié
-func (network *Network) SendUpdateBroadcast() {
-	for {
-		log.Println("Read msg from UpdateMsgBroadcast")
-		message := <-network.UpdateMsgBroadcast
-		for i, _ := range network.OtherServers {
-			switch message.ReqType {
-			case p.UPD_CLIENT:
-				_, err := (*network.OtherServers[i]).Write([]byte("/upt_client " + message.Arguments[0] + "\n"))
-				if err != nil {
-					log.Println("Error during update client")
-					continue
-				}
-			case p.UPD_ROOM:
-				_, err := (*network.OtherServers[i]).Write([]byte("/upt_rooms " + message.Arguments[0] + " " + message.Arguments[1] + " " + message.Arguments[2] + " " + message.Arguments[3] + "\n"))
-				if err != nil {
-					log.Println("Error during update rooms")
-					continue
-				}
-			default:
-			}
-		}
-	}
+	log.Println("End listening to Server " + strconv.Itoa(server.id))
 }
 
 // reqUpdate permet d'envoyer sur le channel dédié une demande d'update
@@ -211,35 +173,5 @@ func (network *Network) reqUpdate(cmd string, arguments []string, relId int) {
 		}
 	default:
 		log.Println("Could not recognized reqUpdate")
-	}
-}
-
-//sendToRootNode(msg, emetteurId) -->
-
-//send message to root node
-func (network *Network) sendToRootNode(msg string, emetteurId int) {
-	log.Println("Send message to root node")
-	for i, _ := range network.OtherServers {
-		if i == 0 {
-			_, err := (*network.OtherServers[i]).Write([]byte(msg + "\n"))
-			if err != nil {
-				log.Println("Error during sendToRootNode")
-				continue
-			}
-		}
-	}
-}
-
-//send message to every child nodes contained in raymond.queue
-func (network *Network) sendToChildNodes(msg string, emetteurId int) {
-	log.Println("Send message to child nodes")
-	for i, _ := range Raymond.queue {
-		if i != 0 {
-			_, err := (*network.OtherServers[i]).Write([]byte(msg + "\n"))
-			if err != nil {
-				log.Println("Error during sendToChildNodes")
-				continue
-			}
-		}
 	}
 }

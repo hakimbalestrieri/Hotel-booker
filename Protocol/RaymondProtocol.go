@@ -3,24 +3,26 @@ package Protocol
 /**
 File: RaymondProtocol.go
 Authors: Hakim Balestrieri
-Date: 27.11.2021
+Date: 25.12.2021
 */
 
-type RaymondStatus int
+const (
+	RAYMOND_PRO_REQ RaymondType = iota
+	RAYMOND_WAIT
+	RAYMOND_END
+	RAYMOND_REQ
+	RAYMOND_TOKEN
+)
 
 const (
-	RAY_REQ RaymondStatus = iota
-	RAY_WAIT
-	RAY_END
-	RAY_REQ_SENDER
-	RAY_TOKEN
-
-	RAY_NO
+	RAY_NO RaymondStatusType = iota
+	RAY_ASK
 	RAY_SC
 )
 
+type RaymondType int
+type RaymondStatusType int
 type RaymondProtocol struct {
-	ReqType  RaymondStatus
+	ReqType  RaymondType
 	ServerId int
-	ParentId int
 }

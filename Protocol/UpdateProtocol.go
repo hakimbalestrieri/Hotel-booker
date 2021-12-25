@@ -1,8 +1,7 @@
 package Protocol
-
 /**
 File: UpdateProtocol.go
-Authors: Hakim Balestrieri
+Authors: Hakim Balestrieri & Alexandre Mottier
 Date: 27.11.2021
 */
 
@@ -14,9 +13,9 @@ const (
 )
 
 type UpdateProtocol struct {
-	ReqType      UpdateType
-	Arguments    []string
-	clientId     int
+	ReqType  UpdateType
+	Arguments []string
+	clientId int
 	ServerIdFrom int
-	ServerIdTo   []int
+	ServerIdTo []int
 }

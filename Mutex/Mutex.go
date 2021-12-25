@@ -1,138 +1,148 @@
-package Mutex2
+package Mutex
 
+/**
+File: Mutex.go
+Authors: Hakim Balestrieri
+Date: 25.12.2021
+*/
 
 import (
-	p "PRR-Labo3-Balestrieri/Protocol"
+	Raymond "PRR-Labo3-Balestrieri/Raymond"
+	"PRR-Labo3-Balestrieri/Business"
+	"PRR-Labo3-Balestrieri/Config"
 	"PRR-Labo3-Balestrieri/Network"
+	p "PRR-Labo3-Balestrieri/Protocol"
+	"log"
+	"net"
 )
 
 type Mutex struct {
-	network *Network.Network
-	hotel	*Business.Hotel
-	raymond *Raymond.Raymond
-	UserMsgIn	chan Network.UserProtocol
-	UpdateMsgIn	chan p.UpdateProtocol
-	UpdateMsgBroadcast	chan p.UpdateProtocol
+	ServerId           int
+	network            *Network.Network
+	hotel              *Business.Hotel
+	Raymond            *Raymond.Raymond
+	MsgSC              chan string
+	AccessCS           chan bool
+	UserMsgIn          chan Network.UserProtocol
+	RaymondMsgIn       chan p.RaymondProtocol
+	RaymondMsgOut      chan p.RaymondProtocol
+	UpdateMsgIn        chan p.UpdateProtocol
+	UpdateMsgBroadcast chan p.UpdateProtocol
 }
 
 func NewMutex(id int) *Mutex {
-	mutex := &Mutex{
-		network: Network.NewNetwork(id),
-		hotel: Business.NewHotel(id),
-		raymond: Raymond.NewRaymond(id),
-		UserMsgIn: make(chan Network.UserProtocol),
-		UpdateMsgIn: make(chan p.UpdateProtocol),
-		UpdateMsgBroadcast: make(chan p.UpdateProtocol),
+	return &Mutex{ServerId: id}
+}
+
+// Init initialise all the mutex component and start the goroutines
+func (mutex *Mutex) Init() {
+
+	mutex.RaymondMsgIn = make(chan p.RaymondProtocol)
+	mutex.RaymondMsgOut = make(chan p.RaymondProtocol)
+	mutex.UpdateMsgIn = make(chan p.UpdateProtocol)
+	mutex.UpdateMsgBroadcast = make(chan p.UpdateProtocol)
+	mutex.UserMsgIn = make(chan Network.UserProtocol)
+	mutex.AccessCS = make(chan bool)
+
+	mutex.network = &Network.Network{
+		CurrentServerId: mutex.ServerId,
+		UpdateMsgIn:        mutex.UpdateMsgIn,
+		UpdateMsgBroadcast: mutex.UpdateMsgBroadcast,
 	}
-	
-	connected := mutex.network.ConnectToServers()
+
+	connected := mutex.network.ConnectToRootServer()
 
 	if connected != true {
 		return
 	}
 
-	//initialize mutex.raymond
-	mutex.raymond = &Raymond.Raymond{
-		me: id,
-		status: p.RAY_NO,
-		parent: nil,
-		file: 0,
-		RaymondMsgBroadcast: make(chan p.RaymondProtocol),
+	serversSchema := Config.ServerSchema[mutex.ServerId]
+
+	mutex.Raymond = &Raymond.Raymond{
+		//canaux
+		RayMsgIn:  mutex.RaymondMsgIn,
+		RayMsgOut: mutex.RaymondMsgOut,
+
+		//variables raymond
+		CurrentId: mutex.ServerId,
+		Status:    p.RAY_NO,
+		ParentId:  serversSchema.Root,
 	}
 
-	mutex.waitForEveryone()
-	mutex.raymond.Init()
+	mutex.MsgSC = make(chan string)
 
-	// Create hotel
+	// Création de l'Hotel
 	rooms := make(map[int]map[int]string)
 	mutex.hotel = &Business.Hotel{
-		Network: 	mutex.network,
-		Rooms:   	rooms,
-		MsgSC:   	mutex.MsgSC,
-		AccessCS: 	mutex.AcessCS,
-		UserMsgIn: 	mutex.UserMsgIn,
+		Network:   mutex.network,
+		Rooms:     rooms,
+		MsgSC:     mutex.MsgSC,
+		AccessCS:  mutex.AccessCS,
+		UserMsgIn: mutex.UserMsgIn,
 	}
 
 	for i := 0; i < Config.RoomsNumber; i++ {
 		mutex.hotel.Rooms[i] = make(map[int]string)
 	}
-
 }
 
-//Run goroutines
+// Run launch goroutines
 func (mutex *Mutex) Run() {
-	go mutex.raymond.Run()
 	go mutex.hotel.Run()
+	go mutex.listenReqSC()
 	go mutex.updateHotel()
+	go mutex.Raymond.Run()
 }
 
-//update hotel username or update room everytime we recevie update message
-func (mutex *Mutex) updateHotel() {
-	for {
-		select {
-		case msg := <-mutex.UpdateMsgIn:
-			switch msg.Type {
-			case p.UPDATE_USER:
-				mutex.hotel.UpdateUsername(msg.Arguments[0])
-			case p.UPDATE_ROOM:
-				mutex.hotel.UpdateRooms(msg.Arguments)
-			}
-		}
-	}
+// NewClient create a new Client and listen to tcp Client
+// used as a goroutine
+func (mutex *Mutex) NewClient(conn net.Conn) {
 
-
-/*
- create new client and listen to tcp client
-*/
-func (ray *Raymond) NewClient(conn net.Conn) {
 	log.Printf("new Client has joined: %s", conn.RemoteAddr().String())
 
-	ray.RaymondMsgBroadcast <- RaymondProtocol{
-		ReqType:  RAY_REQ,
-		ServerId: ray.me,
-		ParentId: ray.parent,
-	}
-	//defer close connection
-	defer conn.Close()
-
-	//read data from client
-	for {
-		data := make([]byte, 1024)
-		length, err := conn.Read(data)
-		if err != nil {
-			log.Printf("error: %v", err)
-			break
-		}
-		//log.Printf("read data: %s", data[:length])
-		ray.RaymondMsgBroadcast <- RaymondProtocol{
-			ReqType:  RAY_REQ,
-			ServerId: ray.me,
-			ParentId: ray.parent,
-		}
+	c := &Network.Client{
+		Conn:     conn,
+		Username: "newClient",
+		Commands: mutex.UserMsgIn,
 	}
 
+	defer c.Conn.Close()
+
+	c.ReadInput()
 }
 
-/*
-wait for all servers to connect
-*/
-func (mutex *Mutex) waitForEveryone() {
-	var array []bool
-	array = make([]bool, Config.ServerNumber)
-	array[mutex.ServerId] = true
+// updateHotel goroutine that takes care of updating the hotel everytime we recieve a request on the dedicated channel
+func (mutex *Mutex) updateHotel() {
 	for {
-		ok := true
-		for _, val := range array {
-			if !val {
-				ok = false
-				break
-			}
+		log.Println("Read msg from UpdateMsgIn")
+		message := <-mutex.UpdateMsgIn
+		switch message.ReqType {
+		case p.UPD_CLIENT:
+			mutex.hotel.UpdateUsername(message.Arguments[0])
+		case p.UPD_ROOM:
+			mutex.hotel.UpdateRooms(message.Arguments)
+		default:
 		}
-		if ok {
-			break
-		}
-		msg := <- mutex.network.Ready
-		array[msg] = true
 	}
-	log.Println("All servers are connected")
+}
+
+// listenReqSC listen channel for incoming critical section request
+func (mutex *Mutex) listenReqSC() {
+	for {
+		log.Println("Read msg from MsgSC")
+		msg := <-mutex.MsgSC
+		switch msg {
+		case "req":
+			log.Println("Put msg REQ in RayMsgIn")
+			mutex.RaymondMsgIn <- p.RaymondProtocol{
+				ReqType: p.RAYMOND_PRO_REQ,
+			}
+		case "rel":
+			log.Println("Put msg REL in RayMsgIn")
+			mutex.RaymondMsgIn <- p.RaymondProtocol{
+				ReqType: p.RAYMOND_END,
+			}
+		default:
+		}
+	}
 }
