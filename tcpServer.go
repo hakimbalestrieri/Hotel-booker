@@ -1,6 +1,6 @@
 /**
 File: tcpServer.go
-Authors: Hakim Balestrieri
+Authors: Hakim Balestrieri & Alexandre Mottier
 Date: 22.10.2021
 */
 package main
@@ -20,7 +20,7 @@ func main() {
 	servID := os.Args[1]
 	serverId, err := strconv.Atoi(strings.Trim(servID, "\r\n"))
 
-	if err != nil || serverId < 0 || serverId > Config.ServerNumber-1 {
+	if err != nil || serverId < 0 || serverId > Config.ServerNumber - 1 {
 		log.Fatalf("Build the tcpServer with his number (from 1 to %d): %s", Config.ServerNumber, err.Error())
 	}
 
@@ -38,7 +38,7 @@ func main() {
 
 	mutex.Init()
 
-	listener, err := net.Listen("tcp", ":"+strconv.Itoa(Config.ServerPorts[mutex.ServerId]))
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(Config.ClientPorts[mutex.ServerId]))
 	if err != nil {
 		log.Fatalf("unable to start hotel: %s", err.Error())
 	}

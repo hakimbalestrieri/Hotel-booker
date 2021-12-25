@@ -13,11 +13,13 @@ import (
 )
 
 type Raymond struct {
-	//canaux
+
+	//Canaux
 	RayMsgOut chan p.RaymondProtocol
 	RayMsgIn  chan p.RaymondProtocol
+	AccessCS  chan bool
 
-	//variables raymond
+	//Variables raymond
 	CurrentId int
 	Status    p.RaymondStatusType
 	ParentId  int
@@ -71,6 +73,7 @@ func (ray *Raymond) processReq() {
 
 func (ray *Raymond) wait() {
 	ray.Status = p.RAY_SC
+	ray.AccessCS <- true
 }
 
 func (ray *Raymond) end() {

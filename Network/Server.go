@@ -3,6 +3,7 @@ package Network
 import "net"
 
 type Server struct {
-	id   int
-	conn *net.Conn
+	id        int
+	hasAccess bool
+	conn      *net.Conn
 }

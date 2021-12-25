@@ -18,11 +18,17 @@ import (
 )
 
 type Network struct {
-	CurrentServerId    int
-	UpdateMsgIn        chan p.UpdateProtocol
-	UpdateMsgBroadcast chan p.UpdateProtocol
-	rootNode           *Server
-	childNodes         []*Server
+	//Canaux
+	UpdateMsgIn   chan p.UpdateProtocol
+	UpdateMsgOut  chan p.UpdateProtocol
+	RaymondMsgIn  chan p.RaymondProtocol
+	RaymondMsgOut chan p.RaymondProtocol
+	HasAccess     chan bool
+
+	//Variables Network
+	CurrentServerId int
+	rootNode        *Server
+	childNodes      []*Server
 }
 
 // ConnectToRootServer permet d'ouvrir une connexion sur le serveur root
@@ -34,7 +40,7 @@ func (network *Network) ConnectToRootServer() bool {
 	network.childNodes = make([]*Server, len(serversSchema.Children), len(serversSchema.Children))
 	initConnection := make(chan bool)
 
-	go network.ConnectToChildren(initConnection)
+	go network.ConnectToChildServers(initConnection)
 
 	if serversSchema.Root != network.CurrentServerId {
 		rootNode := conf.ServerPorts[serversSchema.Root]
@@ -46,14 +52,14 @@ func (network *Network) ConnectToRootServer() bool {
 			if err != nil {
 				log.Println(fmt.Sprintf("Failed to connect to node : %d", rootNode))
 			} else {
-				conn.Write([]byte("/hello " + strconv.Itoa(network.CurrentServerId) + "\n"))
-				log.Println(fmt.Sprintf("Sucessfully connected to node : %d", rootNode))
+				network.WriteToNodeWithParameter(network.CurrentServerId, "/hello", strconv.Itoa(network.CurrentServerId))
 				network.rootNode = &Server{
 					id:   serversSchema.Root,
 					conn: &conn,
 				}
 				go network.listen(network.rootNode)
 				break
+
 			}
 		}
 
@@ -62,15 +68,15 @@ func (network *Network) ConnectToRootServer() bool {
 	return <-initConnection
 }
 
-func (network *Network) ConnectToChildren(connOk chan bool) {
+func (network *Network) ConnectToChildServers(connOk chan bool) {
 
 	if conf.Debug {
-		log.Println("Launching ConnectToChildren")
+		log.Println("Launching ConnectToChildServers")
 	}
 
 	serverPort := conf.ServerPorts[network.CurrentServerId]
 
-	listener, err := net.Listen("tcp", ":" + strconv.Itoa(serverPort))
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(serverPort))
 	if err != nil {
 		connOk <- false
 		log.Printf("unable to listen on port %d: with connOk : %s\n", conf.ServerPorts[network.CurrentServerId], err.Error())
@@ -122,56 +128,214 @@ func (network *Network) ConnectToChildren(connOk chan bool) {
 				if conf.Debug {
 					log.Printf("Connected to node : %d\n", servId)
 				}
-				network.childNodes = append(network.childNodes, &Server{
+				childServer := &Server{
 					id:   servId,
 					conn: &conn,
-				})
+				}
+
+				network.childNodes = append(network.childNodes, childServer)
+				go network.listen(childServer)
 			}
 		}
 	}
 
 	if conf.Debug {
-		log.Println("ConnectToChildren terminated")
+		log.Println("ConnectToChildServers terminated")
 	}
 	connOk <- true
 	return
 }
 
-// listen for any request that are sent to this server
-func (network *Network) listen(server *Server) {
-	log.Println("Listening to Server " + strconv.Itoa(server.id))
+func (network *Network) listen(serv *Server) {
+
+	log.Printf("Listen server launched, server : %d\n", serv.id)
+
+	var delimiter byte = '\n'
+	cutset := "\r\n"
+	separator := " "
+
 	for {
-		msg, err := bufio.NewReader(*server.conn).ReadString('\n')
+		msg, err := bufio.NewReader(*serv.conn).ReadString(delimiter)
 		if err != nil {
 			return
 		}
-		msg = strings.Trim(msg, "\r\n")
-		args := strings.Split(msg, " ")
+		msg = strings.Trim(msg, cutset)
+		args := strings.Split(msg, separator)
 		cmd := strings.TrimSpace(args[0])
-		arguments := args[1:]
-		network.reqUpdate(cmd, arguments, server.id)
+		argument := args[1:]
+
+		switch cmd {
+
+		case "/token":
+			log.Printf("Server handle command : %s", cmd)
+			network.RaymondMsgIn <- p.RaymondProtocol{
+				ReqType: p.RAYMOND_REQ,
+			}
+		case "/req":
+			serverId, _ := strconv.Atoi(argument[0])
+			log.Printf("Server with id : %d handle command : %s", serverId, cmd)
+			network.RaymondMsgIn <- p.RaymondProtocol{
+				ReqType:  p.RAYMOND_REQ,
+				ServerId: serverId,
+			}
+		case "/ready":
+			log.Printf("Server with id : %d handle command : %s", serv.id, cmd)
+			serv.hasAccess = true
+		case "/go":
+			log.Printf("Server with id : %d handle command : %s", serv.id, cmd)
+			network.HasAccess <- true
+		case "/upt_client":
+			log.Printf("Server handle command : %s", cmd)
+			network.UpdateMsgIn <- p.UpdateProtocol{
+				ReqType:      p.UPD_CLIENT,
+				Arguments:    argument,
+				ServerIdFrom: serv.id,
+			}
+		case "/upt_rooms":
+			log.Printf("Server handle command : %s", cmd)
+			network.UpdateMsgIn <- p.UpdateProtocol{
+				ReqType:      p.UPD_ROOM,
+				Arguments:    argument,
+				ServerIdFrom: serv.id,
+			}
+		default:
+			if conf.Debug {
+				log.Println("Default case listen()")
+			}
+		}
 	}
-	log.Println("End listening to Server " + strconv.Itoa(server.id))
 }
 
-// reqUpdate permet d'envoyer sur le channel dédié une demande d'update
-func (network *Network) reqUpdate(cmd string, arguments []string, relId int) {
-	switch cmd {
-	case "/upt_client":
-		log.Println("Put msg /upt_client in UpdateMsgIn")
-		network.UpdateMsgIn <- p.UpdateProtocol{
-			ReqType:      p.UPD_CLIENT,
-			Arguments:    arguments,
-			ServerIdFrom: relId,
+func (network *Network) waitUntilServersAreReady() bool {
+
+	if conf.Debug {
+		log.Println("Waiting until servers are ready")
+	}
+
+	serversSchema := conf.ServerSchema[network.CurrentServerId]
+	childLength := len(serversSchema.Children)
+	if childLength == 0 {
+		//Le serveur n'a aucun enfant , dans ce cas-là il passe directement à ready
+		network.WriteToNode(network.rootNode.id, "/ready")
+	} else {
+		childNodes := make([]bool, childLength)
+		for {
+			for i, server := range network.childNodes {
+				if server.hasAccess == true {
+					childNodes[i] = true
+				}
+			}
+			everyNodesAreReady := true
+
+			for _, elem := range childNodes {
+				if elem == false {
+					everyNodesAreReady = false
+				}
+			}
+			if everyNodesAreReady {
+				break
+			}
 		}
-	case "/upt_rooms":
-		log.Println("Put msg /upt_rooms in UpdateMsgIn")
-		network.UpdateMsgIn <- p.UpdateProtocol{
-			ReqType:      p.UPD_ROOM,
-			Arguments:    arguments,
-			ServerIdFrom: relId,
+		if conf.Debug {
+			log.Println("All nodes are ready")
 		}
-	default:
-		log.Println("Could not recognized reqUpdate")
+	}
+
+	rootNodeId := network.rootNode.id
+
+	if rootNodeId != network.CurrentServerId {
+		network.WriteToNode(network.rootNode.id, "/ready")
+		<-network.HasAccess
+		log.Printf("Server with id %d is ready \n", rootNodeId)
+
+	}
+
+	for _, server := range network.childNodes {
+		network.WriteToNode(server.id, "/go")
+	}
+	return true
+}
+
+func (network *Network) ManageOutMsg() {
+	for {
+		if conf.Debug {
+			log.Println("Currently reading msg from RaymondMsgOut")
+		}
+
+		msg := <-network.RaymondMsgOut
+		nodeId := network.rootNode.id
+
+		switch msg.ReqType {
+
+		case p.RAYMOND_TOKEN:
+
+			var servers []*Server
+			if network.rootNode.id == network.CurrentServerId {
+				for _, serv := range network.childNodes {
+					if serv.id != msg.ServerId {
+						servers = append(servers, serv)
+					} else {
+						network.rootNode = serv
+					}
+				}
+				network.childNodes = servers
+			}
+			network.WriteToNode(nodeId, "/token")
+
+		case p.RAYMOND_REQ:
+			network.WriteToNodeWithParameter(nodeId, "/req", strconv.Itoa(network.CurrentServerId))
+
+		default:
+			if conf.Debug {
+				log.Println("Default case, ManageOutMsg")
+			}
+		}
+	}
+}
+
+func (network *Network) WriteToNode(nodeId int, typeMsg string) {
+	_, err := (*network.rootNode.conn).Write([]byte(typeMsg + "\n"))
+	if err != nil {
+		log.Println(fmt.Sprintf("Server with id  %d failed to send "+typeMsg+" message", nodeId))
+	} else {
+		log.Println(fmt.Sprintf("Message sent to server with id : %d", nodeId))
+	}
+}
+
+func (network *Network) WriteToNodeWithParameter(nodeId int, typeMsg string, query string) {
+	_, err := (*network.rootNode.conn).Write([]byte(typeMsg + " " + query + "\n"))
+	if err != nil {
+		log.Println(fmt.Sprintf("Server with id :  %d failed to send message : %s", nodeId, typeMsg))
+	} else {
+		log.Println(fmt.Sprintf("Message sent to server with id : %d", nodeId))
+	}
+}
+
+func (network *Network) ManageUpdateMsgOut() {
+	for {
+		if conf.Debug {
+			log.Println("Currently reading msg from UpdateMsgOut")
+		}
+		msg := <-network.UpdateMsgOut
+		for _, serv := range network.childNodes {
+			switch msg.ReqType {
+			case p.UPD_ROOM:
+
+				var arguments []string
+				for i := 0; i <= 3; i++ {
+					arguments = append(arguments, msg.Arguments[i]+" ")
+				}
+				arguments = append(arguments, "\n")
+				network.WriteToNodeWithParameter(serv.id, "/upt_rooms", strings.Join(arguments, " "))
+
+			case p.UPD_CLIENT:
+				network.WriteToNodeWithParameter(serv.id, "/upt_client", msg.Arguments[0])
+
+			default:
+				if conf.Debug {
+					log.Println("Default case ManageUpdateMsgOut()")
+				}
+			}
+		}
 	}
 }

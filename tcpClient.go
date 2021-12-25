@@ -25,7 +25,7 @@ func main() {
 	}
 
 	CONNECT, _ := strconv.Atoi(arguments[1])
-	conn, err := net.Dial("tcp", "localhost:"+strconv.Itoa(Config.ServerPorts[CONNECT-1]))
+	conn, err := net.Dial("tcp", "localhost:"+strconv.Itoa(Config.ClientPorts[CONNECT-1]))
 	if err != nil {
 		log.Fatal(err)
 	}

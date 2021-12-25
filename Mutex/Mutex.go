@@ -7,11 +7,11 @@ Date: 25.12.2021
 */
 
 import (
-	Raymond "PRR-Labo3-Balestrieri/Raymond"
 	"PRR-Labo3-Balestrieri/Business"
 	"PRR-Labo3-Balestrieri/Config"
 	"PRR-Labo3-Balestrieri/Network"
 	p "PRR-Labo3-Balestrieri/Protocol"
+	Raymond "PRR-Labo3-Balestrieri/Raymond"
 	"log"
 	"net"
 )
@@ -27,32 +27,32 @@ type Mutex struct {
 	RaymondMsgIn       chan p.RaymondProtocol
 	RaymondMsgOut      chan p.RaymondProtocol
 	UpdateMsgIn        chan p.UpdateProtocol
-	UpdateMsgBroadcast chan p.UpdateProtocol
+	UpdateMsgOut chan p.UpdateProtocol
 }
 
 func NewMutex(id int) *Mutex {
 	return &Mutex{ServerId: id}
 }
 
-// Init initialise all the mutex component and start the goroutines
 func (mutex *Mutex) Init() {
 
 	mutex.RaymondMsgIn = make(chan p.RaymondProtocol)
 	mutex.RaymondMsgOut = make(chan p.RaymondProtocol)
 	mutex.UpdateMsgIn = make(chan p.UpdateProtocol)
-	mutex.UpdateMsgBroadcast = make(chan p.UpdateProtocol)
+	mutex.UpdateMsgOut = make(chan p.UpdateProtocol)
 	mutex.UserMsgIn = make(chan Network.UserProtocol)
 	mutex.AccessCS = make(chan bool)
 
 	mutex.network = &Network.Network{
 		CurrentServerId: mutex.ServerId,
-		UpdateMsgIn:        mutex.UpdateMsgIn,
-		UpdateMsgBroadcast: mutex.UpdateMsgBroadcast,
+		UpdateMsgIn:     mutex.UpdateMsgIn,
+		UpdateMsgOut:    mutex.UpdateMsgOut,
+		RaymondMsgIn:    mutex.RaymondMsgIn,
+		RaymondMsgOut:   mutex.RaymondMsgOut,
+		HasAccess:       make(chan bool),
 	}
 
-	connected := mutex.network.ConnectToRootServer()
-
-	if connected != true {
+	if mutex.network.ConnectToRootServer() != true {
 		return
 	}
 
@@ -90,6 +90,8 @@ func (mutex *Mutex) Init() {
 func (mutex *Mutex) Run() {
 	go mutex.hotel.Run()
 	go mutex.listenReqSC()
+	go mutex.network.ManageOutMsg()
+	go mutex.network.ManageUpdateMsgOut()
 	go mutex.updateHotel()
 	go mutex.Raymond.Run()
 }

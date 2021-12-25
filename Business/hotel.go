@@ -84,7 +84,7 @@ func (h *Hotel) Username(c *Network.Client, args []string) {
 	}
 	h.clients = append(h.clients, args[1])
 	c.Username = args[1]
-	h.Network.UpdateMsgBroadcast <- Protocol.UpdateProtocol{
+	h.Network.UpdateMsgOut <- Protocol.UpdateProtocol{
 		ReqType:   Protocol.UPD_CLIENT,
 		Arguments: []string{args[1]},
 	}
@@ -176,7 +176,7 @@ func (h *Hotel) reserve(c *Network.Client, args []string) {
 	}
 
 	// Update other servers
-	h.Network.UpdateMsgBroadcast <- Protocol.UpdateProtocol{
+	h.Network.UpdateMsgOut <- Protocol.UpdateProtocol{
 		ReqType:   Protocol.UPD_ROOM,
 		Arguments: []string{roomNameRaw, dateReservationRaw, numberNightsRaw, c.Username},
 	}

@@ -9,9 +9,10 @@ package Config
 var Debug = true
 var RoomsNumber = 30
 var DayNumber = 31
-var ServerPorts = map[int]int{0: 3020, 1: 3000, 2: 3001}
+var ServerPorts = map[int]int{0: 3100, 1: 3101, 2: 3102, 3: 3103, 4: 3104, 5: 3105}
 var ServerNumber = len(ServerPorts)
 var ServerWithoutParent = -1
+var ClientPorts = map[int]int{0: 4000, 1: 4001, 2: 4002, 3: 4003, 4: 4004, 5: 4005}
 
 type Structure struct {
 	Root     int
