@@ -99,25 +99,3 @@ Un autre protocole a été créé pour gérer les messages d'update afin de gér
 La commande **/ready** permet de savoir que tous les autres serveurs sont prêts.
 
 La commande **/hello** permet de savoir si le serveur qu'on contacte nous écoute bien.
-
-## Scénario de tests
-
-Pas eu le temps de faire, comme Lamport n'est pas terminer.
-
-
-
-## Remarques
-
-#### Labo1
-
-Les corrections du labo1 données par Raphaël Racine ont été prises en compte et les problèmes ont été corrigés durant ce laboratoire.
-
-Les tests du labo1 ont été corrigés et améliorés pour correspondre à un scénario d'utilisation.
-
-#### Labo2
-
-Il peut y avoir des problèmes de connexion entre les serveurs, il suffit de relancer les serveurs pour que ça fonctionne. 
-
-L'algorithme de Lamport n'est pas 100% fonctionnel. Parfois cela fonctionne bien, mais la plupart du temps non. Cela est surement dû a un problème entre les channels.
-
-La partie REQ et ACK de l'algorithme fonctionne, mais parfois le serveur ne parvient pas à envoyer le message de release aux autres serveurs.
